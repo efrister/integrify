@@ -1,3 +1,5 @@
+import chunk from 'chunk';
+import throttledQueue from 'throttled-queue';
 import { Config, Rule } from '../common';
 
 export interface ReplicateAttributesRule extends Rule {
@@ -113,16 +115,42 @@ export function integrifyReplicateAttributes(
             .where(target.foreignKey, '==', masterId)
             .get()
             .then(detailDocs => {
-              detailDocs.forEach(detailDoc => {
-                console.log(
-                  `integrify: On collection ${
-                    target.isCollectionGroup ? 'group ' : ''
-                  }[${target.collection}], id [${
-                    detailDoc.id
-                  }], applying update:`,
-                  update
+              // Chunk up the affected docs
+              const batchedDocs = chunk(detailDocs.docs, 10);
+              console.log(
+                `integrify: Created ${batchedDocs.length} chunks of 10`
+              );
+
+              // Setup throttling. 1 Request per Second.
+              const throttle = throttledQueue(1, 1000);
+
+              // Prepare the firebase batch writes
+              batchedDocs.forEach(docBatch => {
+                const firebaseBatch = db.batch();
+
+                docBatch.forEach(detailDoc => {
+                  console.log(
+                    `integrify: On collection ${
+                      target.isCollectionGroup ? 'group ' : ''
+                    }[${target.collection}], id [${
+                      detailDoc.id
+                    }], preparing to apply update:`,
+                    update
+                  );
+                  firebaseBatch.update(detailDoc.ref, update);
+                });
+
+                promises.push(
+                  new Promise((resolve, reject) => {
+                    throttle(() => {
+                      console.log(`Committing batch...`);
+                      firebaseBatch
+                        .commit()
+                        .then(resolve)
+                        .catch(reject);
+                    });
+                  })
                 );
-                promises.push(detailDoc.ref.update(update));
               });
             })
         );

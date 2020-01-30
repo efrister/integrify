@@ -56,7 +56,9 @@
     "coveralls": "^3.0.6"
   },
   "dependencies": {
-    "caller-path": "^2.0.0"
+    "caller-path": "^2.0.0",
+    "chunk": "0.0.2",
+    "throttled-queue": "^1.0.7"
   },
   "husky": {
     "hooks": {
